@@ -1,83 +1,143 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v14.0 - CSS Grid (Clean)";
-const TABLE_ID = 'SysDashboard_Config'; 
+const WIDGET_VERSION = "v15.0 - Diagnostics & Dual Mode";
+
+// --- LOGGING HELPER ---
+const log = (msg, data = null) => {
+  const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
+  const prefix = `[${WIDGET_VERSION} @ ${timestamp}]`;
+  if (data) console.log(prefix, msg, data);
+  else console.log(prefix, msg);
+};
 
 // --- ERROR BOUNDARY ---
-// This prevents the "White Screen of Death" by catching React errors
 class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+  constructor(props) { super(props); this.state = { hasError: false, error: null, info: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
+  componentDidCatch(error, info) { 
+    this.setState({ error, info }); 
+    log("CRITICAL CRASH IN RENDER", { error, info });
   }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    this.setState({ error, errorInfo });
-    console.error("Widget Crash:", error, errorInfo);
-  }
-
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 20, color: 'red', border: '2px solid red', background: '#fff0f0' }}>
-          <h3>⚠️ Widget Crashed</h3>
-          <p>{this.state.error && this.state.error.toString()}</p>
-          <details style={{ whiteSpace: 'pre-wrap' }}>
-            {this.state.errorInfo && this.state.errorInfo.componentStack}
-          </details>
+        <div style={{ padding: 20, background: '#ffe6e6', color: '#cc0000', border: '2px solid red', fontFamily: 'monospace' }}>
+          <h3>⚠️ WIDGET CRASHED</h3>
+          <p>{this.state.error?.toString()}</p>
+          <pre>{this.state.info?.componentStack}</pre>
         </div>
       );
     }
-    return this.props.children; 
+    return this.props.children;
   }
 }
 
-// --- MAIN DASHBOARD COMPONENT ---
+// --- MAIN COMPONENT ---
 function Dashboard() {
   const [items, setItems] = useState([]);
-  const [status, setStatus] = useState("Initializing connection...");
+  const [status, setStatus] = useState("Initializing...");
+  const [debugLog, setDebugLog] = useState([]); // Visual log for on-screen debugging
+  const mountedRef = useRef(false);
+
+  // Helper to update visual log
+  const addDebug = (msg) => {
+    setDebugLog(prev => [...prev, msg].slice(-5)); // Keep last 5 lines
+  };
+
+  // 1. INITIALIZATION & PARAMS
+  const params = new URLSearchParams(window.location.search);
+  const isJumpMode = params.get('mode') === 'jump';
   const grist = window.grist;
 
-  // 1. GRIST DATA CONNECTION
-   useEffect(() => {
+  // 2. NAVIGATION HANDLER
+  const handleNavigate = (url) => {
+    log("Attempting navigation to:", url);
+    if (!url) return;
+    
+    // Check Origin
+    const isSameOrigin = window.top.location.origin === window.location.origin;
+    log(`Origin Check: Widget=${window.location.origin}, Top=${window.top.location.origin}, Match=${isSameOrigin}`);
+
+    if (isSameOrigin) {
+      try {
+        log("⚡ Triggering History PushState");
+        window.top.history.pushState(null, '', url);
+        window.top.dispatchEvent(new PopStateEvent('popstate'));
+        return;
+      } catch (e) { 
+        log("History API Failed (Security Block?)", e); 
+      }
+    } else {
+      log("⚠️ Cross-Origin detected. Using standard reload.");
+    }
+    // Fallback
+    window.top.location.href = url;
+  };
+
+  // 3. GRIST CONNECTION
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+
+    log("Component Mounted. Checking Grist Object...");
+    addDebug("Mounting...");
+
     if (!grist) {
-      setStatus("Error: Grist API global not found.");
+      const err = "FATAL: 'window.grist' is undefined. Is the script loaded?";
+      setStatus(err);
+      log(err);
       return;
     }
 
     try {
+      log("Calling grist.ready({ requiredAccess: 'full' })...");
+      addDebug("Connecting to Grist...");
+      
       grist.ready({
         columns: [
           { name: 'Label', title: 'Label', type: 'Text'},
           { name: 'Link', title: 'Link URL', type: 'Text'},
-          { name: 'X', title: 'X Pos', type: 'Numeric'},
-          { name: 'Y', title: 'Y Pos', type: 'Numeric'},
-          { name: 'W', title: 'Width', type: 'Numeric'},
-          { name: 'H', title: 'Height', type: 'Numeric'},
+          { name: 'X', title: 'X Pos', type: 'Numeric', optional: true},
+          { name: 'Y', title: 'Y Pos', type: 'Numeric', optional: true},
+          { name: 'W', title: 'Width', type: 'Numeric', optional: true},
+          { name: 'H', title: 'Height', type: 'Numeric', optional: true},
           { name: 'Color', title: 'Color', type: 'Text', optional: true}
         ],
-        // --------------------------------------------------------
-        // FIX: Change 'read' to 'read table' or 'full'
-        // --------------------------------------------------------
-        requiredAccess: 'read table' 
+        requiredAccess: 'full' // <--- MUST BE 'full' or 'read table'
       });
 
       grist.onRecords((records) => {
+        log(`Records Received: ${records?.length || 0}`);
+        addDebug(`Rx Records: ${records?.length || 0}`);
+
         if (!records || records.length === 0) {
-          setStatus("Connected: 0 records found.");
+          setStatus("Connected, but 0 records received.");
           setItems([]);
           return;
         }
 
+        // --- JUMP MODE LOGIC ---
+        if (isJumpMode) {
+          log("Mode: JUMP. Processing first record...");
+          const targetUrl = records[0].Link;
+          
+          if (targetUrl) {
+            setStatus(`🚀 Jumping to: ${records[0].Label || 'Target'}...`);
+            log(`Jumping to URL: ${targetUrl}`);
+            setTimeout(() => handleNavigate(targetUrl), 100);
+          } else {
+            const err = "Error: Jump Mode active, but Record #1 has no Link.";
+            setStatus(err);
+            log(err);
+          }
+          return; 
+        }
+
+        // --- CANVAS MODE LOGIC ---
+        log("Mode: CANVAS. Mapping data...");
         const mappedData = records.map(rec => ({
           id: rec.id,
-          // CSS Grid lines start at 1, but Grist often uses 0-based. 
-          // We add 1 to ensure it sits inside the grid correctly.
           x: (Math.round(Number(rec.X)) || 0) + 1,
           y: (Math.round(Number(rec.Y)) || 0) + 1,
           w: Math.round(Number(rec.W)) || 2,
@@ -86,153 +146,84 @@ function Dashboard() {
           linkUrl: rec.Link,
           color: rec.Color || '#ffffff'
         }));
-
+        
         setItems(mappedData);
-        setStatus(null); // Clear status means success
+        setStatus(null); // Clear status to show grid
+        log("Data Mapped. Rendering Grid.");
       });
+
     } catch (err) {
-      setStatus(`Grist Init Error: ${err.message}`);
+      const msg = `Grist Init Error: ${err.message}`;
+      setStatus(msg);
+      log(msg);
+      addDebug("Init Crash");
     }
-  }, []);
+  }, [isJumpMode]);
 
-  // 2. NAVIGATION HANDLER
-  const handleNavigate = (url) => {
-    if (!url) return;
+  // --- RENDER HELPERS ---
 
-    // CHECK: Are we on the same domain? (We should be now!)
-    if (window.top.location.origin === window.location.origin) {
-       console.log("⚡ Instant Navigation");
-       
-       // 1. Update the Browser URL silently
-       window.top.history.pushState(null, '', url);
-       
-       // 2. Tell Grist to wake up and handle the change
-       // Grist listens for 'popstate' to switch pages internally
-       window.top.dispatchEvent(new PopStateEvent('popstate'));
-       return;
-    }
-
-    // Fallback: Full Page Reload (Slow)
-    console.log("🐢 Slow Navigation (Cross-Origin)");
-    window.top.location.href = url;
-  };
-
+  // 1. VISUAL LOADING SCREEN (Prevents 'Invisible' White Screen)
   if (status) {
-    return <div style={{ padding: 20, color: '#555' }}>{status}</div>;
+    return (
+      <div style={{ padding: 20, fontFamily: 'sans-serif', borderTop: '4px solid orange' }}>
+        <h3 style={{margin:0}}>Status: {status}</h3>
+        <hr/>
+        <div style={{ fontSize: '12px', color: '#666', background: '#f5f5f5', padding: 10, fontFamily: 'monospace' }}>
+          <strong>Debug Log:</strong><br/>
+          {debugLog.map((l, i) => <div key={i}>{l}</div>)}
+          <br/>
+          <strong>Version:</strong> {WIDGET_VERSION}<br/>
+          <strong>Mode:</strong> {isJumpMode ? "JUMP (Tray)" : "CANVAS (Dashboard)"}
+        </div>
+      </div>
+    );
   }
 
+  // 2. MAIN GRID RENDER
   return (
     <div className="dashboard-container">
-      {/* 
-         12 Column Grid 
-         We use minmax(0, 1fr) to prevent content from blowing out the grid cells
-      */}
       <div className="grid-canvas">
         {items.map(item => (
-          <div 
-            key={item.id}
-            className="grid-item"
+          <div key={item.id} className="grid-item"
             style={{
-              gridColumnStart: item.x,
-              gridColumnEnd: `span ${item.w}`,
-              gridRowStart: item.y,
-              gridRowEnd: `span ${item.h}`,
+              gridColumn: `${item.x} / span ${item.w}`,
+              gridRow: `${item.y} / span ${item.h}`,
               backgroundColor: item.color
             }}
-            onClick={() => item.linkUrl && handleNavigate(item.linkUrl)}
+            onClick={() => {
+                log(`Clicked: ${item.label}`);
+                item.linkUrl && handleNavigate(item.linkUrl)
+            }}
           >
              <div className="item-content">
-                <span className="label">{item.label}</span>
-                {item.linkUrl && <span className="link-icon">↗</span>}
+                <span style={{fontWeight:600}}>{item.label}</span>
+                {item.linkUrl && <span style={{fontSize:'0.8em', opacity:0.5, marginLeft:4}}> ↗</span>}
              </div>
           </div>
         ))}
       </div>
-
-      <div className="version-tag">{WIDGET_VERSION}</div>
+      
+      {/* Floating Version Tag for Confidence */}
+      <div style={{
+        position:'fixed', bottom:5, right:5, 
+        color: 'white', background: 'rgba(0,0,0,0.5)', 
+        fontSize:10, padding: '2px 5px', pointerEvents:'none'
+      }}>
+        {WIDGET_VERSION}
+      </div>
 
       <style>{`
-        /* RESET */
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-
-        /* LAYOUT */
-        .dashboard-container {
-            width: 100vw;
-            min-height: 100vh;
-            padding: 10px;
-            background-color: #f0f2f5;
-        }
-
-        .grid-canvas {
-            display: grid;
-            /* 12 Columns, flexible width */
-            grid-template-columns: repeat(12, minmax(0, 1fr));
-            /* Auto rows, fixed height of 50px per unit (adjust as needed) */
-            grid-auto-rows: 50px; 
-            gap: 10px;
-            width: 100%;
-        }
-
-        /* ITEMS */
-        .grid-item {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: transform 0.1s, box-shadow 0.1s;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .grid-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
-            border-color: #bbb;
-            z-index: 2;
-        }
-
-        .item-content {
-            padding: 8px;
-            text-align: center;
-            width: 100%;
-            font-weight: 500;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .link-icon {
-            font-size: 10px;
-            color: #999;
-        }
-
-        .version-tag {
-            position: fixed; 
-            bottom: 5px; right: 5px; 
-            background: rgba(0,0,0,0.7); 
-            color: lime; 
-            padding: 2px 6px; 
-            font-size: 10px; 
-            border-radius: 4px;
-            pointer-events: none;
-        }
+        body { margin: 0; padding: 0; }
+        .dashboard-container { padding: 10px; min-height: 100vh; background: #f0f2f5; box-sizing: border-box; }
+        .grid-canvas { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 50px; gap: 10px; }
+        .grid-item { background: white; border: 1px solid #ddd; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.1s; overflow: hidden; }
+        .grid-item:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-color: #999; }
+        .item-content { padding: 5px; text-align: center; font-family: -apple-system, sans-serif; color: #333; word-break: break-word; }
       `}</style>
     </div>
   );
 }
 
-// --- APP ENTRY POINT ---
 export default function App() {
-  return (
-    <ErrorBoundary>
-      <Dashboard />
-    </ErrorBoundary>
-  );
+  return <ErrorBoundary><Dashboard /></ErrorBoundary>;
 }
