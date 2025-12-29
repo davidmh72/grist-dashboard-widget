@@ -50,24 +50,18 @@ function Dashboard() {
 
     if (!grist) { setStatus("Error: Grist API not found"); return; }
 
-    grist.ready({
-      columns: [
-        { name: 'Label', title: 'Label', type: 'Text'},
-        { name: 'Link', title: 'Link URL', type: 'Text'},
-        { name: 'X', title: 'X Pos', type: 'Numeric', optional: true},
-        { name: 'Y', title: 'Y Pos', type: 'Numeric', optional: true},
-        { name: 'W', title: 'Width', type: 'Numeric', optional: true},
-        { name: 'H', title: 'Height', type: 'Numeric', optional: true},
-        { name: 'Color', title: 'Color', type: 'Text', optional: true}
-      ],
-      requiredAccess: 'full'
-    });
+    // Announce that the widget is ready
+    grist.ready();
 
+    // Listen for records from the linked table
     grist.onRecords((records) => {
       if (!records || records.length === 0) {
-        setStatus("Waiting for data...");
+        setStatus("No configuration found. Please link to the SysDashboard_Config table.");
+        setItems([]);
         return;
       }
+      setItems(records);
+      setStatus(null); // Clear status once we have data
 
       // --- JUMP MODE LOGIC ---
       if (isJumpMode) {
@@ -129,38 +123,33 @@ function Dashboard() {
   }
 
   // --- RENDER CANVAS MODE ---
-  if (status) return <div style={{padding:20}}>{status}</div>;
+  if (status) {
+    return <div className="status-message">{status}</div>;
+  }
 
   return (
-    <div className="dashboard-container">
-      <div className="grid-canvas">
-        {items.map(item => (
-          <div key={item.id} className="grid-item"
-            style={{
-              gridColumn: `${item.x} / span ${item.w}`,
-              gridRow: `${item.y} / span ${item.h}`,
-              backgroundColor: item.color
-            }}
-            onClick={() => item.linkUrl && handleNavigate(item.linkUrl)}
-          >
-             <div className="item-content">
-                <span style={{fontWeight:600}}>{item.label}</span>
-                {item.linkUrl && <span style={{fontSize:'0.8em', opacity:0.5, marginLeft:4}}> ↗</span>}
-             </div>
-          </div>
-        ))}
-      </div>
-      <div style={versionStyle}>{WIDGET_VERSION}</div>
-      <style>{`
-        body { margin: 0; padding: 0; }
-        .dashboard-container { padding: 10px; min-height: 100vh; background: #f0f2f5; box-sizing: border-box; }
-        .grid-canvas { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 50px; gap: 10px; }
-        .grid-item { background: white; border: 1px solid #ddd; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.1s; overflow: hidden; }
-        .grid-item:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-color: #999; }
-        .item-content { padding: 5px; text-align: center; font-family: -apple-system, sans-serif; color: #333; word-break: break-word; }
-      `}</style>
+    <div className="dashboard-canvas">
+      {items.map(item => (
+        <div
+          key={item.id}
+          className="dashboard-item"
+          style={{
+            position: 'absolute',
+            left: `${item.X}px`,
+            top: `${item.Y}px`,
+            width: `${item.W}px`,
+            height: `${item.H}px`,
+          }}
+        >
+          {item.Label}
+        </div>
+      ))}
     </div>
   );
+}
+
+function App() {
+  return <ErrorBoundary><Dashboard /></ErrorBoundary>;
 }
 
 // STYLES
