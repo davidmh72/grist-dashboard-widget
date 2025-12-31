@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.7-menu-fix-2";
+const WIDGET_VERSION = "v2.8-final-menu-fix";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -56,7 +56,9 @@ function Dashboard() {
     }
 
     grist.ready({
-      columns: ['X', 'Y', 'W', 'H', 'Label', 'Link', 'Color', 'Type', 'Pages'],
+      // By asking for 'Pages.page_name', we are telling Grist to follow the
+      // reference in the 'Pages' column and return the 'page_name' for each record.
+      columns: ['X', 'Y', 'W', 'H', 'Label', 'Link', 'Color', 'Type', { name: "Pages", columns: ["page_name"] }],
       requiredAccess: 'full'
     });
 
@@ -108,12 +110,9 @@ function Element({ item }) {
 
 // --- MENU ELEMENT ---
 function MenuElement({ item }) {
-  // A list of records from a formula arrives as ["L", record1, record2, ...].
-  // This code correctly extracts just the records.
-  let pageRecords = [];
-  if (Array.isArray(item.pages) && item.pages[0] === 'L') {
-    pageRecords = item.pages.slice(1);
-  }
+  // The data now arrives as a list of [recordId, {page_name: "Page Name"}]
+  // This code correctly parses this new, richer format.
+  const pageRecords = Array.isArray(item.pages) ? item.pages : [];
 
   return (
     <div
@@ -131,16 +130,15 @@ function MenuElement({ item }) {
       }}
     >
       <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-        {pageRecords.map(page => {
-          // The page name is stored in the 'page_name' field.
-          const pageName = page.fields.page_name || 'Untitled Page';
+        {pageRecords.map(([pageId, pageData]) => {
+          const pageName = pageData.page_name || 'Untitled Page';
           return (
-            <li key={page.id} style={{ marginBottom: '5px' }}>
+            <li key={pageId} style={{ marginBottom: '5px' }}>
               <a
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  const internalLink = `#p=${page.id}`;
+                  const internalLink = `#p=${pageId}`;
                   handleNavigate(internalLink);
                 }}
                 style={{ textDecoration: 'none', color: item.color, fontSize: '12px', cursor: 'pointer' }}
