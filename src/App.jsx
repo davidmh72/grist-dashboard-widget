@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.6-menu-fix";
+const WIDGET_VERSION = "v2.7-menu-fix-2";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -27,14 +27,12 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- NAVIGATION HANDLER ---
-// This is the restored "instant jump" navigation logic.
 const handleNavigate = (url) => {
   if (!url) return;
   const isSameOrigin = window.top.location.origin === window.location.origin;
 
   if (isSameOrigin) {
     try {
-      // For internal links, use the History API for an "instant jump".
       window.top.history.pushState(null, '', url);
       window.top.dispatchEvent(new PopStateEvent('popstate'));
       return;
@@ -42,10 +40,8 @@ const handleNavigate = (url) => {
       console.warn("Instant navigation failed, falling back to full reload.", e);
     }
   }
-  // Fallback for external links or if the History API fails.
   window.top.location.href = url;
 };
-
 
 // --- MAIN COMPONENT ---
 function Dashboard() {
@@ -112,8 +108,12 @@ function Element({ item }) {
 
 // --- MENU ELEMENT ---
 function MenuElement({ item }) {
-  // Correctly parse the data from lookupRecords, which returns a list of records.
-  const pageRecords = Array.isArray(item.pages) ? item.pages : [];
+  // A list of records from a formula arrives as ["L", record1, record2, ...].
+  // This code correctly extracts just the records.
+  let pageRecords = [];
+  if (Array.isArray(item.pages) && item.pages[0] === 'L') {
+    pageRecords = item.pages.slice(1);
+  }
 
   return (
     <div
@@ -131,22 +131,25 @@ function MenuElement({ item }) {
       }}
     >
       <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-        {pageRecords.map(page => (
-          <li key={page.id} style={{ marginBottom: '5px' }}>
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                // The URL for Grist pages is just the hash.
-                const internalLink = `#p=${page.id}`;
-                handleNavigate(internalLink);
-              }}
-              style={{ textDecoration: 'none', color: item.color, fontSize: '12px', cursor: 'pointer' }}
-            >
-              {page.fields.pageId}
-            </a>
-          </li>
-        ))}
+        {pageRecords.map(page => {
+          // The page name is stored in the 'page_name' field.
+          const pageName = page.fields.page_name || 'Untitled Page';
+          return (
+            <li key={page.id} style={{ marginBottom: '5px' }}>
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const internalLink = `#p=${page.id}`;
+                  handleNavigate(internalLink);
+                }}
+                style={{ textDecoration: 'none', color: item.color, fontSize: '12px', cursor: 'pointer' }}
+              >
+                {pageName}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

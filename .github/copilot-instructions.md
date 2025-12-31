@@ -54,3 +54,18 @@ This section describes the common process for developing and testing a widget.
 Including a link to the official Grist Widget API documentation would be very helpful for quick reference.
 
 *   **Grist Widget API Reference:** `https://support.gristlabs.com/widget-api/`
+
+---
+
+### **8. Troubleshooting & Debugging Protocol**
+
+To avoid errors and unnecessary iterations, you must follow this protocol when debugging.
+
+1.  **Request Diagnostic Information First:** Before attempting a fix, **always ask the user** for relevant diagnostic information. This includes:
+    *   **Browser Developer Console Logs:** Specifically, the output from `console.log()` statements showing the data received from Grist.
+    *   **Terminal Output:** Any error messages from the `npm run build` or `npm run dev` processes.
+    *   **Screenshots:** If the issue is visual, ask for a screenshot of the widget's current state.
+
+2.  **Consult Official Documentation:** Before implementing a feature that uses a new or unfamiliar part of the Grist API, **always consult the official Grist documentation** or review existing, working code examples. Do not guess how an API or data structure works.
+    *   **Grist Help Center:** `https://support.getgrist.com/`
+    *   **Grist Community Forum:** `https://community.getgrist.com/`
