@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v3.0"
+const WIDGET_VERSION = "v2.9-data-fix";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -56,15 +56,16 @@ function Dashboard() {
     }
 
     grist.ready({
-      // By asking for 'Pages.page_name', we are telling Grist to follow the
-      // reference in the 'Pages' column and return the 'page_name' for each record.
-      columns: ['X', 'Y', 'W', 'H', 'Label', 'Link', 'Color', 'Type', { name: "Pages", columns: ["page_name"] }],
+      // This is the corrected syntax for requesting data from a Reference List.
+      columns: [
+        'X', 'Y', 'W', 'H', 'Label', 'Link', 'Color', 'Type',
+        { name: "Pages", type: "RefList:_grist_Pages", columns: ["page_name"] }
+      ],
       requiredAccess: 'full'
     });
 
     grist.onRecords((records) => {
       console.log("Received records from Grist:", records);
-      window.gristRecords = records;
       if (!records || records.length === 0) {
         setStatus("No configuration found. Please link to the SysDashboard_Config table.");
         setItems([]);
@@ -112,7 +113,6 @@ function Element({ item }) {
 // --- MENU ELEMENT ---
 function MenuElement({ item }) {
   // The data now arrives as a list of [recordId, {page_name: "Page Name"}]
-  // This code correctly parses this new, richer format.
   const pageRecords = Array.isArray(item.pages) ? item.pages : [];
 
   return (
