@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.5-fixed-nav";
+const WIDGET_VERSION = "v2.6-menu-fix";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -143,7 +143,7 @@ function MenuElement({ item }) {
               }}
               style={{ textDecoration: 'none', color: item.color, fontSize: '12px', cursor: 'pointer' }}
             >
-              {page.fields.page_name}
+              {page.fields.pageId}
             </a>
           </li>
         ))}
