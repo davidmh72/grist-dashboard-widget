@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.0";
+const WIDGET_VERSION = "v2.1-restored";
 
 // --- INITIALIZATION ---
-// Log the widget version to the console for easier debugging.
-// This runs only once when the component is first mounted.
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
 
 // --- ERROR BOUNDARY ---
@@ -40,12 +38,9 @@ function Dashboard() {
       return;
     }
 
-    // Announce that the widget is ready
     grist.ready();
 
-    // Listen for records from the linked table
     grist.onRecords((records) => {
-      // Diagnostic log: show the raw data received from Grist.
       console.log("Received records from Grist:", records);
 
       if (!records || records.length === 0) {
@@ -53,8 +48,23 @@ function Dashboard() {
         setItems([]);
         return;
       }
-      setItems(records);
-      setStatus(null); // Clear status once we have data
+
+      // Restore the original data mapping logic.
+      // This converts Grist columns into properties used for rendering.
+      const mappedData = records.map(rec => ({
+        id: rec.id,
+        x: (Math.round(Number(rec.X)) || 0) + 1,
+        y: (Math.round(Number(rec.Y)) || 0) + 1,
+        w: Math.round(Number(rec.W)) || 2,
+        h: Math.round(Number(rec.H)) || 1,
+        label: rec.Label || '',
+        link: rec.Link || '',
+        color: rec.Color || 'var(--color-cell-fg, #3d3d3d)',
+        bgColor: rec.Color ? 'rgba(255,255,255,0.05)' : 'var(--color-cell-bg, white)'
+      }));
+
+      setItems(mappedData);
+      setStatus(null);
     });
   }, [grist]);
 
@@ -62,22 +72,35 @@ function Dashboard() {
     return <div className="status-message">{status}</div>;
   }
 
+  // Restore the original rendering logic with <a> tags and grid-based positioning.
   return (
     <div className="dashboard-canvas">
       {items.map(item => (
-        <div
+        <a
           key={item.id}
-          className="dashboard-item"
+          href={item.link || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
             position: 'absolute',
-            left: `${item.X}px`,
-            top: `${item.Y}px`,
-            width: `${item.W}px`,
-            height: `${item.H}px`,
-          }}
-        >
-          {item.Label}
-        </div>
+            left: `${item.x * 20}px`,
+            top: `${item.y * 20}px`,
+            width: `${item.w * 20}px`,
+            height: `${item.h * 20}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #ddd',
+            textDecoration: 'none',
+            color: item.color,
+            background: item.bgColor,
+            boxSizing: 'border-box',
+            padding: '5px',
+            fontSize: '12px',
+            overflow: 'hidden',
+        }}>
+          {item.label}
+        </a>
       ))}
     </div>
   );
