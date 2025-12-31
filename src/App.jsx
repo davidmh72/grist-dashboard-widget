@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.3";
+const WIDGET_VERSION = "v2.4";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -94,7 +94,7 @@ function Dashboard() {
 // This component decides which type of element to render based on the 'Type' field.
 function Element({ item }) {
   // If the Type is 'Menu' and there is page data, render the MenuElement.
-  if (item.type === 'Menu' && Array.isArray(item.pages) && item.pages.length > 1) {
+  if (item.type === 'Menu') { // Removed complex check, MenuElement will handle data validation.
     return <MenuElement item={item} />;
   }
   // Otherwise, fall back to the default.
@@ -102,11 +102,37 @@ function Element({ item }) {
 }
 
 
+// --- NAVIGATION HANDLER ---
+// A single, robust function to handle all navigation.
+const handleNavigate = (url) => {
+  if (!url) { return; }
+
+  try {
+    const targetUrl = new URL(url, window.top.location.href);
+    const currentUrl = new URL(window.top.location.href);
+
+    // Check if it's an internal link to the same document.
+    const isInternal = targetUrl.origin === currentUrl.origin &&
+                       targetUrl.pathname === currentUrl.pathname;
+
+    if (isInternal) {
+      // For internal links, use the History API for an "instant jump".
+      window.top.history.pushState(null, '', targetUrl.href);
+      window.top.dispatchEvent(new PopStateEvent('popstate'));
+    } else {
+      // For external links, navigate the whole page.
+      window.top.location.href = targetUrl.href;
+    }
+  } catch (e) {
+    console.error("Navigation failed:", e);
+  }
+};
+
+
 // --- MENU ELEMENT ---
 function MenuElement({ item }) {
-  // The 'pages' data from Grist is a list where the first element is the table name
-  // and the second element is the list of records.
-  const pageRecords = Array.isArray(item.pages) && item.pages.length > 1 ? item.pages[1] : [];
+  // The 'pages' data from a lookupRecords formula is a list of record objects.
+  const pageRecords = Array.isArray(item.pages) ? item.pages : [];
 
   return (
     <div
@@ -130,14 +156,10 @@ function MenuElement({ item }) {
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                // Construct the internal Grist page link and pass to the handler
-                handleNavigate(`#p=${encodeURIComponent(page.fields.page_name)}`);
+                const internalLink = `#p=${page.id}`;
+                handleNavigate(internalLink);
               }}
-              style={{
-                textDecoration: 'none',
-                color: item.color,
-                fontSize: '12px',
-              }}
+              style={{ textDecoration: 'none', color: item.color, fontSize: '12px', cursor: 'pointer' }}
             >
               {page.fields.page_name}
             </a>
@@ -149,33 +171,14 @@ function MenuElement({ item }) {
 }
 
 
-// --- NAVIGATION HANDLER ---
-// A single function to handle all navigation. It can handle both internal Grist
-// page links (hashes) and full external URLs.
-const handleNavigate = (url) => {
-  if (!url) return;
-
-  // If it's an internal Grist page link (starts with #), use the History API.
-  if (url.startsWith('#')) {
-    const newUrl = new URL(window.top.location.href);
-    newUrl.hash = url.substring(1); // Remove the leading '#'
-    window.top.history.pushState(null, '', newUrl.href);
-    window.top.dispatchEvent(new PopStateEvent('popstate'));
-  } else {
-    // For full URLs, just navigate the top-level window.
-    window.top.location.href = url;
-  }
-};
-
-
 // --- DEFAULT ELEMENT ---
-// This component now uses the handleNavigate function for same-tab navigation.
+// This component now uses the unified handleNavigate function.
 function DefaultElement({ item }) {
   return (
     <a
       href={item.link || '#'}
       onClick={(e) => {
-        e.preventDefault(); // Prevent the default link behavior
+        e.preventDefault();
         handleNavigate(item.link);
       }}
       style={{
@@ -195,6 +198,7 @@ function DefaultElement({ item }) {
         padding: '5px',
         fontSize: '12px',
         overflow: 'hidden',
+        cursor: 'pointer',
       }}>
       {item.label}
     </a>
