@@ -64,6 +64,7 @@ function Dashboard() {
 
     grist.onRecords((records) => {
       console.log("Received records from Grist:", records);
+      window.gristRecords = records;
       if (!records || records.length === 0) {
         setStatus("No configuration found. Please link to the SysDashboard_Config table.");
         setItems([]);
