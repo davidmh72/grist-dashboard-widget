@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v2.4";
+const WIDGET_VERSION = "v2.5-fixed-nav";
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
@@ -26,6 +26,27 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// --- NAVIGATION HANDLER ---
+// This is the restored "instant jump" navigation logic.
+const handleNavigate = (url) => {
+  if (!url) return;
+  const isSameOrigin = window.top.location.origin === window.location.origin;
+
+  if (isSameOrigin) {
+    try {
+      // For internal links, use the History API for an "instant jump".
+      window.top.history.pushState(null, '', url);
+      window.top.dispatchEvent(new PopStateEvent('popstate'));
+      return;
+    } catch (e) {
+      console.warn("Instant navigation failed, falling back to full reload.", e);
+    }
+  }
+  // Fallback for external links or if the History API fails.
+  window.top.location.href = url;
+};
+
+
 // --- MAIN COMPONENT ---
 function Dashboard() {
   const [items, setItems] = useState([]);
@@ -39,23 +60,17 @@ function Dashboard() {
     }
 
     grist.ready({
-      // Tell Grist which columns we need. This ensures the widget receives
-      // the correct data regardless of which table is currently active.
       columns: ['X', 'Y', 'W', 'H', 'Label', 'Link', 'Color', 'Type', 'Pages'],
       requiredAccess: 'full'
     });
 
     grist.onRecords((records) => {
       console.log("Received records from Grist:", records);
-
       if (!records || records.length === 0) {
         setStatus("No configuration found. Please link to the SysDashboard_Config table.");
         setItems([]);
         return;
       }
-
-      // Restore the original data mapping logic.
-      // This converts Grist columns into properties used for rendering.
       const mappedData = records.map(rec => ({
         id: rec.id,
         x: (Math.round(Number(rec.X)) || 0) + 1,
@@ -66,11 +81,9 @@ function Dashboard() {
         link: rec.Link || '',
         color: rec.Color || 'var(--color-cell-fg, #3d3d3d)',
         bgColor: rec.Color ? 'rgba(255,255,255,0.05)' : 'var(--color-cell-bg, white)',
-        // Add the new fields for the Menu element
         type: rec.Type,
         pages: rec.Pages,
       }));
-
       setItems(mappedData);
       setStatus(null);
     });
@@ -80,7 +93,6 @@ function Dashboard() {
     return <div className="status-message">{status}</div>;
   }
 
-  // Restore the original rendering logic with <a> tags and grid-based positioning.
   return (
     <div className="dashboard-canvas">
       {items.map(item => (
@@ -91,47 +103,16 @@ function Dashboard() {
 }
 
 // --- ELEMENT DISPATCHER ---
-// This component decides which type of element to render based on the 'Type' field.
 function Element({ item }) {
-  // If the Type is 'Menu' and there is page data, render the MenuElement.
-  if (item.type === 'Menu') { // Removed complex check, MenuElement will handle data validation.
+  if (item.type === 'Menu') {
     return <MenuElement item={item} />;
   }
-  // Otherwise, fall back to the default.
   return <DefaultElement item={item} />;
 }
 
-
-// --- NAVIGATION HANDLER ---
-// A single, robust function to handle all navigation.
-const handleNavigate = (url) => {
-  if (!url) { return; }
-
-  try {
-    const targetUrl = new URL(url, window.top.location.href);
-    const currentUrl = new URL(window.top.location.href);
-
-    // Check if it's an internal link to the same document.
-    const isInternal = targetUrl.origin === currentUrl.origin &&
-                       targetUrl.pathname === currentUrl.pathname;
-
-    if (isInternal) {
-      // For internal links, use the History API for an "instant jump".
-      window.top.history.pushState(null, '', targetUrl.href);
-      window.top.dispatchEvent(new PopStateEvent('popstate'));
-    } else {
-      // For external links, navigate the whole page.
-      window.top.location.href = targetUrl.href;
-    }
-  } catch (e) {
-    console.error("Navigation failed:", e);
-  }
-};
-
-
 // --- MENU ELEMENT ---
 function MenuElement({ item }) {
-  // The 'pages' data from a lookupRecords formula is a list of record objects.
+  // Correctly parse the data from lookupRecords, which returns a list of records.
   const pageRecords = Array.isArray(item.pages) ? item.pages : [];
 
   return (
@@ -156,6 +137,7 @@ function MenuElement({ item }) {
               href="#"
               onClick={(e) => {
                 e.preventDefault();
+                // The URL for Grist pages is just the hash.
                 const internalLink = `#p=${page.id}`;
                 handleNavigate(internalLink);
               }}
@@ -170,9 +152,7 @@ function MenuElement({ item }) {
   );
 }
 
-
 // --- DEFAULT ELEMENT ---
-// This component now uses the unified handleNavigate function.
 function DefaultElement({ item }) {
   return (
     <a
@@ -204,7 +184,6 @@ function DefaultElement({ item }) {
     </a>
   );
 }
-
 
 function App() {
   return (
