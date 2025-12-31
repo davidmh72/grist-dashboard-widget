@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION ---
-const WIDGET_VERSION = "v3.0
+const WIDGET_VERSION = "v3.0"
 
 // --- INITIALIZATION ---
 console.log(`Grist Canvas Widget ${WIDGET_VERSION} loaded.`);
